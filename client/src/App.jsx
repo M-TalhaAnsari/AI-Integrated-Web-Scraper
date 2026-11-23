@@ -197,9 +197,6 @@ export default function App() {
       <header className="top-header">
         <div>
           <h1>🌐 WebScraper</h1>
-          <p className="subtitle">
-            Bahria University • Web Systems and Techniques • Assignment 3 (CLO 3)
-          </p>
         </div>
         {activeSources.length > 0 && (
           <button onClick={clearAllMemory} className="btn-secondary">

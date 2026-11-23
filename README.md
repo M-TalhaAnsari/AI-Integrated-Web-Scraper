@@ -1,10 +1,5 @@
 # 🌐 WebScraper — AI-Integrated Web Scraper with RAG Chatbot
 
-> **Course:** Web Systems and Techniques (BS-IT 4A)  
-> **Institution:** Bahria University, Islamabad Campus  
-> **Assignment:** Assignment 3 (CLO 3)  
-> **Student Name:** Talha Ansari  
-
 ---
 
 ## 📌 Project Overview
