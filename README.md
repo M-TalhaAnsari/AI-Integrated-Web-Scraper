@@ -1,4 +1,4 @@
-# 🌐 WebMind — AI-Integrated Web Scraper with RAG Chatbot
+# 🌐 WebScraper — AI-Integrated Web Scraper with RAG Chatbot
 
 > **Course:** Web Systems and Techniques (BS-IT 4A)  
 > **Institution:** Bahria University, Islamabad Campus  
@@ -8,24 +8,28 @@
 ---
 
 ## 📌 Project Overview
-WebMind is a full-stack web scraping and AI chatbot application. Users can enter **any website URL**, and the application:
+**WebScraper** is a full-stack web scraping and AI chatbot application with an adjustable split-screen workspace. Users can enter **any website URL**, and the application:
 1. **Scrapes & Extracts** structural web data (Page Title, Meta Description, Headings, Paragraphs, Links).
-2. **Performs Dynamic RAG (Retrieval-Augmented Generation)**:
-   - Segments the page text into overlapping semantic chunks (window size ~600 chars, 120 chars overlap).
-   - Generates vector embeddings for the chunks using Google Gemini's `text-embedding-004`.
-   - Stores embeddings in a high-speed in-memory vector store.
-3. **Powers an Interactive AI Chatbot**:
-   - Computes **cosine similarity** between the user's question and stored website chunks.
-   - Retrieves the top 3 most relevant snippets as context.
-   - Generates answers grounded in the scraped website content using Google Gemini (`gemini-1.5-flash`).
-   - Also answers general questions politely when no context is applicable.
+2. **Multi-Source Scraping & RAG Accumulation:**
+   - Users can click **"+ Scrape & Add"** on any extracted link to scrape sub-pages and merge them into the active RAG knowledge base.
+3. **Dynamic Semantic RAG (Retrieval-Augmented Generation):**
+   - Segments page text into overlapping chunks (~600 chars, 120 chars overlap).
+   - Generates vector embeddings using Gemini's `text-embedding-004` (with fallback lexical search).
+   - In-memory vector search with **cosine similarity** for top relevant snippet retrieval.
+4. **Dual Model AI with Automatic Groq Fallback:**
+   - Primary: Google Gemini (`gemini-1.5-flash`).
+   - Fallback: Groq (`llama-3.3-70b-versatile`) if Gemini hits rate limits or is unavailable.
+5. **Adjustable UI:**
+   - Left side: Clean white background displaying extracted data.
+   - Right side: Soft grey background featuring the AI Chatbot.
+   - Draggable vertical divider to resize both sides dynamically.
 
 ---
 
 ## 🛠️ Tech Stack
-- **Frontend:** React.js, Vite, Axios, Custom Clean CSS (Responsive Design)
-- **Backend:** Node.js, Express.js, Axios, Cheerio
-- **AI & RAG:** `@google/generative-ai` (Gemini 1.5 Flash + Text Embeddings 004), In-Memory Vector Search with Cosine Similarity
+- **Frontend:** React.js, Vite, Axios, Custom Responsive CSS with draggable split-pane
+- **Backend:** Node.js, Express.js, Axios, Cheerio, Groq SDK, Google Generative AI SDK
+- **AI & RAG:** Gemini 1.5 Flash, Groq LLaMA 3.3, In-Memory Vector Store with Cosine Similarity
 
 ---
 
@@ -33,14 +37,14 @@ WebMind is a full-stack web scraping and AI chatbot application. Users can enter
 ```
 AI-Integrated-Web-Scraper/
 ├── server/
-│   ├── .env.example              # Environment variables template
+│   ├── .env.example              # Environment variables template (GEMINI & GROQ)
 │   ├── server.js                 # Express server & API routes
 │   ├── routes/
-│   │   ├── scrape.js             # POST /api/scrape
-│   │   └── chat.js               # POST /api/chat
+│   │   ├── scrape.js             # POST /api/scrape (replace & append modes)
+│   │   └── chat.js               # POST /api/chat (Gemini with Groq fallback)
 │   ├── services/
 │   │   ├── scraper.js            # Cheerio-based web parser
-│   │   └── rag.js                # Text chunker, vector store & embeddings
+│   │   └── rag.js                # Multi-source chunker, vector store & embeddings
 │   └── utils/
 │       └── textCleaner.js        # HTML whitespace & noise stripper
 │
@@ -48,9 +52,9 @@ AI-Integrated-Web-Scraper/
 │   ├── index.html
 │   ├── vite.config.js
 │   └── src/
-│       ├── App.jsx               # Main React UI (Dashboard + Chat)
+│       ├── App.jsx               # Main React UI (Adjustable Split Pane)
 │       ├── main.jsx              # React DOM entry
-│       └── index.css             # Clean responsive styles
+│       └── index.css             # White (left) & Grey (right) Human-like theme
 │
 ├── ASSIGNMENT_GUIDE.md           # Step-by-step project guide
 └── README.md                     # Documentation
@@ -65,17 +69,13 @@ AI-Integrated-Web-Scraper/
    ```bash
    cd server
    ```
-2. Create a `.env` file from the example:
-   ```bash
-   cp .env.example .env
-   ```
-3. Add your free Google Gemini API key to `server/.env`:
+2. Configure environment keys in `server/.env`:
    ```env
    PORT=5000
    GEMINI_API_KEY=your_gemini_api_key_here
+   GROQ_API_KEY=your_groq_api_key_here   # Optional fallback
    ```
-   *(Get your free key from [Google AI Studio](https://aistudio.google.com/apikey))*
-4. Start the backend server:
+3. Start the backend:
    ```bash
    npm run dev
    # or
@@ -94,12 +94,12 @@ AI-Integrated-Web-Scraper/
    ```bash
    npm run dev
    ```
-3. Open your browser at: `http://localhost:3000`
+3. Open in browser: `http://localhost:3000`
 
 ---
 
 ## 💡 Key Highlights to Present to Your Instructor
-1. **Dynamic Website Handling:** Works on any URL without hardcoding specific tags or pages.
-2. **True RAG Pipeline:** Doesn't dump the whole page into the LLM context; uses semantic chunking and vector embeddings with cosine similarity.
-3. **Clean Architecture:** Separation of concerns between scraping (`scraper.js`), semantic retrieval (`rag.js`), and routing.
-4. **Dual Chat Capability:** Answers questions based on extracted website data, with seamless fallback to general questions.
+1. **Multi-Page RAG Accumulation:** Click "+ Scrape & Add" on extracted links to aggregate knowledge from multiple web pages into a single AI context.
+2. **AI Fallback Resilience:** If Gemini is unreachable or rate limited, the backend seamlessly routes to Groq (LLaMA 3.3 70B).
+3. **Draggable Resizable Layout:** Left pane (White, data focus) and Right pane (Grey, chat focus) with dynamic slider.
+4. **Hybrid Search Pipeline:** Uses cosine vector similarity when embeddings are active, and falls back to term relevance if offline.

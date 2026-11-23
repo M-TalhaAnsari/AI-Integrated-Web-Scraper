@@ -1,8 +1,37 @@
 import { Router } from 'express';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import Groq from 'groq-sdk';
 import { getEmbedding, vectorStore } from '../services/rag.js';
 
 const router = Router();
+
+// Helper: Call Gemini
+async function callGemini(prompt, apiKey) {
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  const result = await model.generateContent(prompt);
+  return result.response.text();
+}
+
+// Helper: Call Groq Fallback (LLaMA 3.3 70B)
+async function callGroq(prompt, groqApiKey) {
+  const groq = new Groq({ apiKey: groqApiKey });
+  const completion = await groq.chat.completions.create({
+    messages: [
+      {
+        role: 'system',
+        content: 'You are a professional, helpful, and concise AI assistant for a web scraping application.'
+      },
+      {
+        role: 'user',
+        content: prompt
+      }
+    ],
+    model: 'llama-3.3-70b-versatile',
+    temperature: 0.5
+  });
+  return completion.choices[0]?.message?.content || 'No response generated.';
+}
 
 router.post('/', async (req, res) => {
   try {
@@ -11,65 +40,104 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'Message cannot be empty' });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey || apiKey === 'YOUR_GEMINI_API_KEY_HERE') {
+    const geminiKey = process.env.GEMINI_API_KEY;
+    const groqKey = process.env.GROQ_API_KEY;
+
+    const hasGeminiKey = geminiKey && geminiKey !== 'YOUR_GEMINI_API_KEY_HERE';
+    const hasGroqKey = groqKey && groqKey !== 'YOUR_GROQ_API_KEY_HERE';
+
+    if (!hasGeminiKey && !hasGroqKey) {
       return res.json({
-        reply: `⚠️ **Gemini API Key Missing:** Please add your API key in \`server/.env\` (GEMINI_API_KEY=your_key) to activate the AI chatbot responses!`,
-        sourcesUsed: false
+        reply: `⚠️ **API Key Missing:** Please add your **GEMINI_API_KEY** or **GROQ_API_KEY** in \`server/.env\` to activate AI responses!`,
+        sourcesUsed: false,
+        modelUsed: 'None'
       });
     }
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-
     let context = '';
     let sourcesUsed = false;
+    let queryEmbedding = null;
 
-    // Check if we have scraped website data in vector store
+    // 1. Try to compute query embedding if Gemini key is present
+    if (hasGeminiKey && vectorStore.documents.length > 0) {
+      queryEmbedding = await getEmbedding(message, geminiKey);
+    }
+
+    // 2. Retrieve top matching chunks (hybrid search: vector or keyword)
     if (vectorStore.documents.length > 0) {
-      try {
-        const queryEmbedding = await getEmbedding(message, apiKey);
-        if (queryEmbedding) {
-          const relevantChunks = vectorStore.search(queryEmbedding, 3);
-          if (relevantChunks.length > 0) {
-            context = relevantChunks.map((c, i) => `[Snippet ${i + 1}]: ${c.text}`).join('\n\n');
-            sourcesUsed = true;
-          }
-        }
-      } catch (err) {
-        console.warn('[Chat RAG Warning]:', err.message);
+      const relevantChunks = vectorStore.search(message, queryEmbedding, 4);
+      if (relevantChunks.length > 0 && relevantChunks[0].score > 0) {
+        context = relevantChunks
+          .map((c, i) => `[Snippet ${i + 1} | Source: "${c.sourceTitle}"]:\n${c.text}`)
+          .join('\n\n');
+        sourcesUsed = true;
       }
     }
 
-    // Build prompt for Gemini
+    // 3. Construct prompt
     let prompt;
+    const activeSources = vectorStore.getSources();
     if (sourcesUsed && context) {
-      prompt = `You are an AI assistant answering questions about a scraped website.
-Website Title: ${vectorStore.pageTitle}
-Website URL: ${vectorStore.sourceUrl}
+      prompt = `You are an AI assistant answering questions about the following scraped web content.
+Indexed Sources (${activeSources.length}):
+${activeSources.map(s => `- ${s.title} (${s.url})`).join('\n')}
 
-Relevant Website Information (RAG Context):
+RELEVANT SCRAPED CONTEXT:
 ${context}
 
-User Question: ${message}
+USER QUESTION:
+${message}
 
 Instructions:
-1. Answer the question using the relevant website information above whenever possible.
-2. If the user asks a general question not found on the page, answer politely and mention it is general knowledge.
-3. Keep your response concise, clear, and well formatted.`;
+1. Ground your answer in the scraped context above.
+2. If the user asks a question not in the scraped text, answer politely using general knowledge and clarify that it was not found in the scraped pages.
+3. Keep the answer clear, structured, and easy to read.`;
     } else {
-      prompt = `You are a helpful and polite AI assistant for a web scraping application.
+      prompt = `You are a helpful AI assistant in a Web Scraping application.
 User Question: ${message}
-Please provide a clear and concise answer.`;
+
+Please provide an accurate, clear, and human-like answer.`;
     }
 
-    const result = await model.generateContent(prompt);
-    const reply = result.response.text();
+    let reply = '';
+    let modelUsed = '';
+    let usedFallback = false;
+
+    // 4. Try Gemini first
+    if (hasGeminiKey) {
+      try {
+        reply = await callGemini(prompt, geminiKey);
+        modelUsed = 'Gemini 1.5 Flash';
+      } catch (geminiErr) {
+        console.warn('[Gemini Failed, triggering Groq fallback]:', geminiErr.message);
+        usedFallback = true;
+      }
+    }
+
+    // 5. Fallback to Groq if Gemini failed or wasn't provided
+    if (!reply && hasGroqKey) {
+      try {
+        reply = await callGroq(prompt, groqKey);
+        modelUsed = usedFallback
+          ? 'Groq LLaMA 3.3 (Fallback from Gemini)'
+          : 'Groq LLaMA 3.3';
+      } catch (groqErr) {
+        console.error('[Groq Error]:', groqErr.message);
+      }
+    }
+
+    // 6. Handle case where both attempted models failed
+    if (!reply) {
+      return res.status(500).json({
+        error: 'Both Gemini and Groq AI requests failed. Please check your API keys or rate limits in server/.env.'
+      });
+    }
 
     res.json({
       reply,
       sourcesUsed,
-      websiteTitle: vectorStore.pageTitle || null
+      modelUsed,
+      activeSourcesCount: activeSources.length
     });
   } catch (error) {
     console.error('[Chat Error]:', error.message);

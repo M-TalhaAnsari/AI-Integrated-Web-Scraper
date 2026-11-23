@@ -21,14 +21,14 @@ app.use('/api/chat', chatRoutes);
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'OK',
-    message: 'WebMind Scraper & AI Chatbot API is running',
+    message: 'WebScraper API is running',
     timestamp: new Date().toISOString()
   });
 });
 
 app.listen(PORT, () => {
   console.log(`===============================================`);
-  console.log(` WebMind Server running on http://localhost:${PORT}`);
+  console.log(` WebScraper Server running on http://localhost:${PORT}`);
   console.log(` Health check: http://localhost:${PORT}/api/health`);
   console.log(`===============================================`);
 });
